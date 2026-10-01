@@ -1,0 +1,78 @@
+name: ROS 2 Build CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04   
+
+    steps:
+      - name: 1. 拉取代码
+        uses: actions/checkout@v4
+
+      - name: 2. 安装 ROS 2 基础环境 (Humble Desktop 版)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl gnupg lsb-release
+          sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(source /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+          sudo apt-get update
+          # 注意：从 ros-base 升级为 ros-desktop，覆盖绝大多数常用依赖
+          sudo apt-get install -y ros-humble-desktop python3-rosdep python3-colcon-common-extensions
+          sudo rosdep init || true
+          rosdep update
+
+      - name: 3. 安装 CUDA Toolkit 12.1
+        run: |
+          # 安装 CUDA Toolkit（仅用于 CI 编译，不需要物理显卡驱动）
+          sudo apt-get install -y wget
+          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt-get update
+          sudo apt-get install -y cuda-toolkit-12-1
+
+      - name: 4. 安装 OpenVINO 2023.3
+        run: |
+          # 下载并解压 OpenVINO 2023.3 到 /opt 目录
+          wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2023.3/linux/l_openvino_toolkit_ubuntu22_2023.3.0.13775.ceeafaf64f3_x86_64.tgz
+          sudo mkdir -p /opt/openvino_2023.3
+          sudo tar -xzf l_openvino_toolkit_ubuntu22_2023.3.0.13775.ceeafaf64f3_x86_64.tgz -C /opt/openvino_2023.3 --strip-components=1
+
+      - name: 5. 注入环境变量 (根据你的 env 文件)
+        run: |
+          # 注入后续步骤所需的环境变量
+          echo "ROS_DISTRO=humble" >> $GITHUB_ENV
+          echo "AMENT_PREFIX_PATH=/opt/ros/humble" >> $GITHUB_ENV
+          
+          # OpenVINO 路径
+          echo "OpenVINO_DIR=/opt/openvino_2023.3/runtime/cmake" >> $GITHUB_ENV
+          echo "InferenceEngine_DIR=/opt/openvino_2023.3/runtime/cmake" >> $GITHUB_ENV
+          echo "ngraph_DIR=/opt/openvino_2023.3/runtime/cmake" >> $GITHUB_ENV
+          
+          # PYTHONPATH：包含 OpenVINO 和 ROS 2
+          echo "PYTHONPATH=/opt/openvino_2023.3/python:/opt/openvino_2023.3/python/python3:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages" >> $GITHUB_ENV
+          
+          # LD_LIBRARY_PATH：包含 OpenVINO、CUDA 和 ROS 2
+          echo "LD_LIBRARY_PATH=/opt/openvino_2023.3/runtime/lib/intel64:/usr/local/cuda-12.1/lib64:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib" >> $GITHUB_ENV
+          
+          # PATH：包含 CUDA 和 ROS 2
+          echo "PATH=/usr/local/cuda-12.1/bin:/opt/ros/humble/bin:$PATH" >> $GITHUB_ENV
+
+      - name: 6. 安装项目依赖 (rosdep)
+        run: |
+          source /opt/ros/humble/setup.bash
+          # 尝试自动安装 src 下所有 package.xml 里声明的依赖
+          rosdep install --from-paths src --ignore-src -r -y || echo "部分依赖安装失败，继续尝试编译"
+
+      - name: 7. 编译代码 (colcon build)
+        run: |
+          source /opt/ros/humble/setup.bash
+          # 显式将 OpenVINO 的 CMake 路径传给 colcon，防止 find_package 找不到
+          colcon build --symlink-install --cmake-args \
+            -DOpenVINO_DIR=/opt/openvino_2023.3/runtime/cmake \
+            -DInferenceEngine_DIR=/opt/openvino_2023.3/runtime/cmake \
+            -DCMAKE_PREFIX_PATH=/opt/openvino_2023.3/runtime/cmake
