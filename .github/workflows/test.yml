@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04   
+    runs-on: ubuntu-22.04  
 
     steps:
       - name: 1. 拉取代码
@@ -21,10 +21,8 @@ jobs:
           sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
           echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(source /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
           sudo apt-get update
-          # 注意：从 ros-base 升级为 ros-desktop，覆盖绝大多数常用依赖
-          sudo apt-get install -y ros-humble-desktop python3-rosdep python3-colcon-common-extensions
-          sudo rosdep init || true
-          rosdep update
+          # 安装完整桌面版，覆盖绝大多数常用依赖
+          sudo apt-get install -y ros-humble-desktop python3-colcon-common-extensions
 
       - name: 3. 安装 CUDA Toolkit 12.1
         run: |
@@ -62,16 +60,10 @@ jobs:
           # PATH：包含 CUDA 和 ROS 2
           echo "PATH=/usr/local/cuda-12.1/bin:/opt/ros/humble/bin:$PATH" >> $GITHUB_ENV
 
-      - name: 6. 安装项目依赖 (rosdep)
+      - name: 6. 编译代码 (colcon build)
         run: |
           source /opt/ros/humble/setup.bash
-          # 尝试自动安装 src 下所有 package.xml 里声明的依赖
-          rosdep install --from-paths src --ignore-src -r -y || echo "部分依赖安装失败，继续尝试编译"
 
-      - name: 7. 编译代码 (colcon build)
-        run: |
-          source /opt/ros/humble/setup.bash
-          # 显式将 OpenVINO 的 CMake 路径传给 colcon，防止 find_package 找不到
           colcon build --symlink-install --cmake-args \
             -DOpenVINO_DIR=/opt/openvino_2023.3/runtime/cmake \
             -DInferenceEngine_DIR=/opt/openvino_2023.3/runtime/cmake \
