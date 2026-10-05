@@ -42,7 +42,7 @@ jobs:
           # 缓存 key
           key: ${{ runner.os }}-openvino-2023.3-tgz
 
-      - name: 5. 下载并解压 OpenVINO (缓存未命中时下载)
+      - name: 5. 下载并解压 OpenVINO
         run: |
           # 如果缓存命中（cache-hit == 'true'），则跳过下载
           if [ "${{ steps.cache-openvino.outputs.cache-hit }}" != "true" ]; then
@@ -56,7 +56,7 @@ jobs:
           sudo mkdir -p /opt/openvino_2023.3
           sudo tar -xzf l_openvino_toolkit_ubuntu22_2023.3.0.13775.ceeafaf64f3_x86_64.tgz -C /opt/openvino_2023.3 --strip-components=1
 
-      - name: 6. 注入环境变量 (根据你的 env 文件)
+      - name: 6. 配置环境
         run: |
           # 注入后续步骤所需的环境变量
           echo "ROS_DISTRO=humble" >> $GITHUB_ENV
