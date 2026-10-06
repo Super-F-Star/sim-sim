@@ -6,17 +6,13 @@ FROM ros:humble-ros-base
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ============================================================
-# 第 1 层：安装 OpenVINO 2023.3
+# 第 1 层：下载并解压 OpenVINO 2023.3 (避开 apt 源问题)
 # ============================================================
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        wget curl gnupg lsb-release ca-certificates && \
-    wget -qO - https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
-        | gpg --dearmor -o /usr/share/keyrings/intel-sw-products.gpg && \
-    echo "deb [signed-by=/usr/share/keyrings/intel-sw-products.gpg] https://apt.repos.intel.com/openvino/2023 ubuntu22 main" \
-        | tee /etc/apt/sources.list.d/intel-openvino-2023.list && \
-    apt-get update && \
-    apt-get install -y intel-openvino-dev-ubuntu22-2023.3.0 && \
-    ln -sfn /opt/intel/openvino_2023.3.0 /opt/openvino_2023.3 && \
+RUN apt-get update && apt-get install -y --no-install-recommends wget tar && \
+    wget -q https://storage.openvinotoolkit.org/repositories/openvino/packages/2023.3/linux/l_openvino_toolkit_ubuntu22_2023.3.0.13775.ceeafaf64f3_x86_64.tgz -O /tmp/openvino.tgz && \
+    mkdir -p /opt/openvino_2023.3 && \
+    tar -xzf /tmp/openvino.tgz -C /opt/openvino_2023.3 --strip-components=1 && \
+    rm /tmp/openvino.tgz && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # ============================================================
