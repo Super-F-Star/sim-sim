@@ -27,6 +27,8 @@ jobs:
             ${{ runner.os }}-ccache-
 
       - name: 3. 编译代码
+        # ⚠️ 核心修改：强制指定使用 bash，否则 source 命令会报错
+        shell: bash
         run: |
           source /opt/ros/humble/setup.bash
           colcon build --event-handlers console_direct+ --cmake-args \
@@ -43,6 +45,8 @@ jobs:
             -DCMAKE_PREFIX_PATH="/usr;/opt/openvino_2023.3/runtime/cmake"
 
       - name: 4. 打印所有包编译报错日志 (仅失败时)
+        # 这里也建议加上 shell: bash 保险
+        shell: bash
         if: failure()
         run: |
           echo "========= 编译失败日志 ========="
