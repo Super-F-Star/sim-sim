@@ -8,79 +8,47 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04  
+    runs-on: ubuntu-22.04
+
+    # ============================================================
+    # 核心：使用我们构建好的镜像，环境已全部就绪
+    # ============================================================
+    container:
+      image: ghcr.io/super-f-star/driveless-sim-env:latest
+      options: --user root   # 避免编译时权限不足
 
     steps:
       - name: 1. 拉取代码
         uses: actions/checkout@v4
 
-      - name: 2. 安装 ROS 2 基础环境 (Humble Desktop 版)
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y curl gnupg lsb-release
-          sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
-          echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(source /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
-          sudo apt-get update
-          # 安装完整桌面版，覆盖绝大多数常用依赖
-          sudo apt-get install -y ros-humble-desktop python3-colcon-common-extensions
-
-      - name: 3. 安装 CUDA Toolkit 12.1
-        run: |
-          # 安装 CUDA Toolkit（仅用于 CI 编译，不需要物理显卡驱动）
-          sudo apt-get install -y wget
-          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
-          sudo dpkg -i cuda-keyring_1.1-1_all.deb
-          sudo apt-get update
-          sudo apt-get install -y cuda-toolkit-12-1
-
-      - name: 4. 缓存 OpenVINO 压缩包
-        id: cache-openvino
+      - name: 2. 缓存 ccache (加速 C++/CUDA 编译)
         uses: actions/cache@v4
         with:
-          # 缓存下载下来的原始 tgz 压缩包
-          path: l_openvino_toolkit_ubuntu22_2023.3.0.13775.ceeafaf64f3_x86_64.tgz
-          # 缓存 key
-          key: ${{ runner.os }}-openvino-2023.3-tgz
+          path: /root/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.ref }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
 
-      - name: 5. 下载并解压 OpenVINO
-        run: |
-          # 如果缓存命中（cache-hit == 'true'），则跳过下载
-          if [ "${{ steps.cache-openvino.outputs.cache-hit }}" != "true" ]; then
-            echo "缓存未命中，开始下载 OpenVINO..."
-            wget https://storage.openvinotoolkit.org/repositories/openvino/packages/2023.3/linux/l_openvino_toolkit_ubuntu22_2023.3.0.13775.ceeafaf64f3_x86_64.tgz
-          else
-            echo "缓存命中，跳过下载，直接使用本地的压缩包..."
-          fi
-          
-          # 解压到 /opt 目录
-          sudo mkdir -p /opt/openvino_2023.3
-          sudo tar -xzf l_openvino_toolkit_ubuntu22_2023.3.0.13775.ceeafaf64f3_x86_64.tgz -C /opt/openvino_2023.3 --strip-components=1
-
-      - name: 6. 配置环境
-        run: |
-          # 注入后续步骤所需的环境变量
-          echo "ROS_DISTRO=humble" >> $GITHUB_ENV
-          echo "AMENT_PREFIX_PATH=/opt/ros/humble" >> $GITHUB_ENV
-          
-          # OpenVINO 路径
-          echo "OpenVINO_DIR=/opt/openvino_2023.3/runtime/cmake" >> $GITHUB_ENV
-          echo "InferenceEngine_DIR=/opt/openvino_2023.3/runtime/cmake" >> $GITHUB_ENV
-          echo "ngraph_DIR=/opt/openvino_2023.3/runtime/cmake" >> $GITHUB_ENV
-          
-          # PYTHONPATH：包含 OpenVINO 和 ROS 2
-          echo "PYTHONPATH=/opt/openvino_2023.3/python:/opt/openvino_2023.3/python/python3:/opt/ros/humble/lib/python3.10/site-packages:/opt/ros/humble/local/lib/python3.10/dist-packages" >> $GITHUB_ENV
-          
-          # LD_LIBRARY_PATH：包含 OpenVINO、CUDA 和 ROS 2
-          echo "LD_LIBRARY_PATH=/opt/openvino_2023.3/runtime/lib/intel64:/usr/local/cuda-12.1/lib64:/opt/ros/humble/lib/x86_64-linux-gnu:/opt/ros/humble/lib" >> $GITHUB_ENV
-          
-          # PATH：包含 CUDA 和 ROS 2
-          echo "PATH=/usr/local/cuda-12.1/bin:/opt/ros/humble/bin:$PATH" >> $GITHUB_ENV
-
-      - name: 7. 编译代码 (colcon build)
+      - name: 3. 编译代码
         run: |
           source /opt/ros/humble/setup.bash
-          # 显式将 OpenVINO 的 CMake 路径传给 colcon，防止 find_package 找不到
-          colcon build --symlink-install --cmake-args \
+          colcon build --event-handlers console_direct+ --cmake-args \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CUDA_COMPILER_LAUNCHER=ccache \
+            -DTENSORRT_DIR=/usr \
+            -DTENSORRT_INCLUDE_DIR=/usr/include/x86_64-linux-gnu \
+            -DTENSORRT_LIBRARY=/usr/lib/x86_64-linux-gnu/libnvinfer.so \
+            -DNVONNXPARSER_LIBRARY=/usr/lib/x86_64-linux-gnu/libnvonnxparser.so \
             -DOpenVINO_DIR=/opt/openvino_2023.3/runtime/cmake \
             -DInferenceEngine_DIR=/opt/openvino_2023.3/runtime/cmake \
-            -DCMAKE_PREFIX_PATH=/opt/openvino_2023.3/runtime/cmake
+            -DCMAKE_PREFIX_PATH="/usr;/opt/openvino_2023.3/runtime/cmake"
+
+      - name: 4. 打印所有包编译报错日志 (仅失败时)
+        if: failure()
+        run: |
+          echo "========= 编译失败日志 ========="
+          for log in log/latest_build/*/stderr.log; do
+            echo "--- $log ---"; cat "$log"
+          done || true
