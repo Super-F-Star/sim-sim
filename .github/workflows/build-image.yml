@@ -1,14 +1,14 @@
 name: Build and Push Docker Image
 
 on:
-  workflow_dispatch:   # 只有手动触发，避免每次 push 都构建镜像
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     permissions:
       contents: read
-      packages: write   # 必须开启，才能推送镜像到 GHCR
+      packages: write
 
     steps:
       - name: 1. 拉取代码
@@ -30,7 +30,6 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
-          # 镜像名会自动转换成小写，仓库名里的-会被处理
-          tags: ghcr.io/${{ github.repository_owner }}/driveless-sim-env:latest
+          tags: ghcr.io/super-f-star/driveless-sim-env:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max

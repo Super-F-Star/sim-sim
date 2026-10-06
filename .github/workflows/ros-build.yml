@@ -10,12 +10,9 @@ jobs:
   build:
     runs-on: ubuntu-22.04
 
-    # ============================================================
-    # 核心：使用我们构建好的镜像，环境已全部就绪
-    # ============================================================
     container:
       image: ghcr.io/super-f-star/driveless-sim-env:latest
-      options: --user root   # 避免编译时权限不足
+      options: --user root
 
     steps:
       - name: 1. 拉取代码

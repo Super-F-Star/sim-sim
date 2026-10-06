@@ -1,6 +1,5 @@
 # ============================================================
-# 基础镜像：使用 ROS 官方 Humble 镜像
-# 它自带 Ubuntu 22.04 + ROS 2 Humble，省去安装 ROS 的时间
+# 基础镜像：ROS 官方 Humble 镜像（基于 Ubuntu 22.04）
 # ============================================================
 FROM ros:humble-ros-base
 
@@ -8,7 +7,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # ============================================================
 # 第 1 层：安装 OpenVINO 2023.3
-# 使用 Intel 官方 apt 源，比下载 tar 包更稳定
 # ============================================================
 RUN apt-get update && apt-get install -y --no-install-recommends \
         wget curl gnupg lsb-release ca-certificates && \
@@ -18,7 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         | tee /etc/apt/sources.list.d/intel-openvino-2023.list && \
     apt-get update && \
     apt-get install -y intel-openvino-dev-ubuntu22-2023.3.0 && \
-    # 把你本地的路径 /opt/openvino_2023.3 作为软链接指向真实安装目录
     ln -sfn /opt/intel/openvino_2023.3.0 /opt/openvino_2023.3 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
@@ -53,11 +50,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         cmake && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# 初始化 rosdep（让后面可以快速装依赖）
 RUN rosdep init || true && rosdep update
 
 # ============================================================
-# 第 4 层：设置环境变量（和你的本地环境完全一致）
+# 第 4 层：设置环境变量
 # ============================================================
 ENV ROS_DISTRO=humble
 ENV ROS_VERSION=2
